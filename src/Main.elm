@@ -214,18 +214,17 @@ encode : Model -> E.Value
 encode model =
     E.object
         [ ( "todo", E.string model.todoInput )
-        , ( "todoList"
-          , model.todoList
-                |> E.list
-                    (\elem ->
-                        E.object
-                            [ ( "id", E.int elem.id )
-                            , ( "done", E.bool elem.done )
-                            , ( "content", E.string elem.content )
-                            , ( "tags", E.list (\t -> E.string t) elem.tags )
-                            ]
-                    )
-          )
+        , ( "todoList", E.list encodeTodo model.todoList )
+        ]
+
+
+encodeTodo : Todo -> E.Value
+encodeTodo todo =
+    E.object
+        [ ( "id", E.int todo.id )
+        , ( "done", E.bool todo.done )
+        , ( "content", E.string todo.content )
+        , ( "tags", E.list (\t -> E.string t) todo.tags )
         ]
 
 
