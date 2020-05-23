@@ -32,11 +32,13 @@ type alias Todo =
     , done : Bool
     , content : String
     , tags : List String
+    , input : String
+    , expanded : Bool
     }
 
 
 type alias Model =
-    { todoInput : String
+    { input : String
     , todoList : List Todo
     }
 
@@ -48,7 +50,7 @@ init flags =
             model
 
         Err _ ->
-            { todoList = [], todoInput = "" }
+            { todoList = [], input = "" }
     , Cmd.none
     )
 
@@ -63,21 +65,15 @@ type Msg
     | Toggle Int
     | Remove Int
     | AddTag Int String
+    | TagInputChanged Int String
+    | ToggleTagInput Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        AddTodo content ->
-            ( { model
-                | todoInput = ""
-                , todoList = appendTodo content model.todoList
-              }
-            , Cmd.none
-            )
-
         TodoInputChanged todoStr ->
-            ( { model | todoInput = todoStr }
+            ( { model | input = todoStr }
             , Cmd.none
             )
 
@@ -85,6 +81,33 @@ update msg model =
             ( { model | todoList = List.map (toggleTodo id) model.todoList }
             , Cmd.none
             )
+
+        TagInputChanged id str ->
+            ( { model | todoList = List.map (changeTagInput id str) model.todoList }
+            , Cmd.none
+            )
+
+        ToggleTagInput id ->
+            ( { model | todoList = List.map (toggleTagInput id) model.todoList }
+            , Cmd.none
+            )
+
+        AddTodo content ->
+            ( { model
+                | input = ""
+                , todoList = appendTodo content model.todoList
+              }
+            , Cmd.none
+            )
+
+        AddTag id tag ->
+            case String.isEmpty tag of
+                False ->
+                    update (ToggleTagInput id)
+                        { model | todoList = List.map (addTag id tag) model.todoList }
+
+                True ->
+                    update (ToggleTagInput id) model
 
         Remove id ->
             ( { model
@@ -95,11 +118,6 @@ update msg model =
                         -- reapply ids
                         |> List.indexedMap (\i -> \e -> { e | id = i })
               }
-            , Cmd.none
-            )
-
-        AddTag id tag ->
-            ( { model | todoList = List.map (addTag id tag) model.todoList }
             , Cmd.none
             )
 
@@ -126,16 +144,43 @@ addTag id tag todo =
 
 appendTodo : String -> List Todo -> List Todo
 appendTodo content todoList =
-    todoList ++ [ newTodo content (List.length todoList) ]
+    todoList ++ [ newTodo (List.length todoList) content ]
 
 
-newTodo : String -> Int -> Todo
-newTodo content id =
+newTodo : Int -> String -> Todo
+newTodo id content =
     { done = False
     , content = content
     , id = id
     , tags = []
+    , input = ""
+    , expanded = False
     }
+
+
+changeTagInput : Int -> String -> Todo -> Todo
+changeTagInput id str todo =
+    case todo.id == id of
+        True ->
+            { todo | input = str }
+
+        False ->
+            todo
+
+
+toggleTagInput : Int -> Todo -> Todo
+toggleTagInput id todo =
+    case todo.id == id of
+        False ->
+            todo
+
+        True ->
+            case todo.expanded of
+                True ->
+                    { todo | expanded = False, input = "" }
+
+                False ->
+                    { todo | expanded = True }
 
 
 
@@ -144,9 +189,9 @@ newTodo content id =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ viewTodoInput model.todoInput
-        , viewAddButton model.todoInput
+    div [ style "text-align" "center" ]
+        [ viewTodoInput model.input
+        , viewAddButton model.input
         , viewTodoList model.todoList
         ]
 
@@ -169,24 +214,33 @@ viewAddButton todoInput =
 
 viewTodoList : List Todo -> Html Msg
 viewTodoList todoList =
-    ul [ style "list-style-type" "none" ] (List.map viewTodo todoList)
+    ul
+        [ style "list-style-type" "none"
+        , style "padding" "0"
+        ]
+        (List.map viewTodo todoList)
 
 
 viewTodo : Todo -> Html Msg
 viewTodo todo =
     li []
-        [ button [ onClick (Remove todo.id) ] [ text "X" ]
-        , todoContent todo
-        , todoTags todo.tags
+        [ viewTodoTags todo.tags
+        , p [ style "margin-top" "0px" ]
+            [ button [ onClick (Remove todo.id) ] [ text "X" ]
+            , viewTodoContent todo
+            , button [ onClick (ToggleTagInput todo.id) ] [ text "Tags" ]
+            , viewExpanded todo
+            ]
         ]
 
 
-todoContent : Todo -> Html Msg
-todoContent todo =
+viewTodoContent : Todo -> Html Msg
+viewTodoContent todo =
     p
         [ onClick (Toggle todo.id)
         , style "display" "inline"
         , style "margin-left" "8px"
+        , style "margin-right" "8px"
         , todoDecoration todo.done
         ]
         [ text todo.content ]
@@ -202,9 +256,38 @@ todoDecoration done =
             style "" ""
 
 
-todoTags : List String -> Html Msg
-todoTags tags =
-    p [ style "display" "inline", style "color" "#aaaaaa" ] (List.map (\t -> text (" " ++ t)) tags)
+viewTodoTags : List String -> Html Msg
+viewTodoTags tags =
+    p
+        [ style "display" "inline"
+        , style "color" "#aaaaaa"
+        , style "font-size" ".8rem"
+        ]
+        (List.map (\t -> text (" " ++ t)) tags)
+
+
+viewExpanded : Todo -> Html Msg
+viewExpanded todo =
+    case todo.expanded of
+        True ->
+            viewTagInput todo
+
+        False ->
+            text ""
+
+
+viewTagInput : Todo -> Html Msg
+viewTagInput todo =
+    div []
+        [ input
+            [ type_ "text"
+            , placeholder "Add new tag"
+            , onInput (TagInputChanged todo.id)
+            , value todo.input
+            ]
+            []
+        , button [ onClick (AddTag todo.id todo.input) ] [ text "Add" ]
+        ]
 
 
 
@@ -232,7 +315,7 @@ updateWithStorage msg oldModel =
 encode : Model -> E.Value
 encode model =
     E.object
-        [ ( "todo", E.string model.todoInput )
+        [ ( "todo", E.string model.input )
         , ( "todoList", E.list encodeTodo model.todoList )
         ]
 
@@ -244,6 +327,8 @@ encodeTodo todo =
         , ( "done", E.bool todo.done )
         , ( "content", E.string todo.content )
         , ( "tags", E.list (\t -> E.string t) todo.tags )
+        , ( "input", E.string "" )
+        , ( "expanded", E.bool False )
         ]
 
 
@@ -256,8 +341,10 @@ decoder =
 
 todoDecoder : D.Decoder Todo
 todoDecoder =
-    D.map4 Todo
+    D.map6 Todo
         (D.field "id" D.int)
         (D.field "done" D.bool)
         (D.field "content" D.string)
         (D.field "tags" (D.list D.string))
+        (D.field "input" D.string)
+        (D.field "expanded" D.bool)
