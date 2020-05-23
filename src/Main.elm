@@ -68,17 +68,10 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        AddTodo todoStr ->
+        AddTodo content ->
             ( { model
                 | todoInput = ""
-                , todoList =
-                    model.todoList
-                        ++ [ { done = False
-                             , content = todoStr
-                             , id = List.length model.todoList
-                             , tags = []
-                             }
-                           ]
+                , todoList = appendTodo content model.todoList
               }
             , Cmd.none
             )
@@ -99,25 +92,14 @@ update msg model =
                     model.todoList
                         -- filter out the item that is to be deleted
                         |> List.filter (\e -> e.id /= id)
-                        -- reapply id
+                        -- reapply ids
                         |> List.indexedMap (\i -> \e -> { e | id = i })
               }
             , Cmd.none
             )
 
-        AddTag id tagStr ->
-            ( { model
-                | todoList =
-                    model.todoList
-                        |> List.map
-                            (\e ->
-                                if e.id == id then
-                                    { e | tags = e.tags ++ [ tagStr ] }
-
-                                else
-                                    e
-                            )
-              }
+        AddTag id tag ->
+            ( { model | todoList = List.map (addTag id tag) model.todoList }
             , Cmd.none
             )
 
@@ -142,6 +124,20 @@ addTag id tag todo =
             todo
 
 
+appendTodo : String -> List Todo -> List Todo
+appendTodo content todoList =
+    todoList ++ [ newTodo content (List.length todoList) ]
+
+
+newTodo : String -> Int -> Todo
+newTodo content id =
+    { done = False
+    , content = content
+    , id = id
+    , tags = []
+    }
+
+
 
 -- VIEW
 
@@ -149,33 +145,51 @@ addTag id tag todo =
 view : Model -> Html Msg
 view model =
     div []
-        [ input
-            [ type_ "text"
-            , placeholder "Add new todo"
-            , onInput TodoInputChanged
-            , value model.todoInput
-            ]
-            []
-        , button [ onClick (AddTodo model.todoInput) ] [ text "Add" ]
-        , div [] []
-        , ul [ style "list-style-type" "none" ] (List.map viewTodo model.todoList)
+        [ viewTodoInput model.todoInput
+        , viewAddButton model.todoInput
+        , viewTodoList model.todoList
         ]
+
+
+viewTodoInput : String -> Html Msg
+viewTodoInput todoInput =
+    input
+        [ type_ "text"
+        , placeholder "Add new todo"
+        , onInput TodoInputChanged
+        , value todoInput
+        ]
+        []
+
+
+viewAddButton : String -> Html Msg
+viewAddButton todoInput =
+    button [ onClick (AddTodo todoInput) ] [ text "Add" ]
+
+
+viewTodoList : List Todo -> Html Msg
+viewTodoList todoList =
+    ul [ style "list-style-type" "none" ] (List.map viewTodo todoList)
 
 
 viewTodo : Todo -> Html Msg
 viewTodo todo =
     li []
         [ button [ onClick (Remove todo.id) ] [ text "X" ]
-        , p
-            [ onClick (Toggle todo.id)
-            , style "display" "inline"
-            , style "margin-left" "8px"
-            , todoDecoration todo.done
-            ]
-            [ text todo.content ]
-        , p [ style "display" "inline" ]
-            ([ text " | tags: " ] ++ List.map (\t -> text (t ++ " ")) todo.tags)
+        , todoContent todo
+        , todoTags todo.tags
         ]
+
+
+todoContent : Todo -> Html Msg
+todoContent todo =
+    p
+        [ onClick (Toggle todo.id)
+        , style "display" "inline"
+        , style "margin-left" "8px"
+        , todoDecoration todo.done
+        ]
+        [ text todo.content ]
 
 
 todoDecoration : Bool -> Html.Attribute Msg
@@ -186,6 +200,11 @@ todoDecoration done =
 
         False ->
             style "" ""
+
+
+todoTags : List String -> Html Msg
+todoTags tags =
+    p [ style "display" "inline", style "color" "#aaaaaa" ] (List.map (\t -> text (" " ++ t)) tags)
 
 
 
