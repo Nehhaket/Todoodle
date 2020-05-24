@@ -7,6 +7,7 @@ import Html.Events exposing (..)
 import Html.Lazy exposing (..)
 import Json.Decode as D
 import Json.Encode as E
+import Regex
 
 
 
@@ -60,13 +61,14 @@ init flags =
 
 
 type Msg
-    = AddTodo String
-    | TodoInputChanged String
+    = TodoInputChanged String
+    | AddTodo String
     | Toggle Int
     | Remove Int
     | AddTag Int String
-    | TagInputChanged Int String
     | ToggleTagInput Int
+    | RemoveTag Int Int
+    | TagInputChanged Int String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -121,6 +123,11 @@ update msg model =
             , Cmd.none
             )
 
+        RemoveTag id index ->
+            ( { model | todoList = List.map (removeTag id index) model.todoList }
+            , Cmd.none
+            )
+
 
 toggleTodo : Int -> Todo -> Todo
 toggleTodo id todo =
@@ -136,7 +143,7 @@ addTag : Int -> String -> Todo -> Todo
 addTag id tag todo =
     case todo.id == id of
         True ->
-            { todo | tags = todo.tags ++ [ tag ] }
+            { todo | tags = todo.tags ++ [ tag |> String.trim |> removeWhitespace ] }
 
         False ->
             todo
@@ -183,6 +190,26 @@ toggleTagInput id todo =
                     { todo | expanded = True }
 
 
+removeTag : Int -> Int -> Todo -> Todo
+removeTag id index todo =
+    case todo.id == id of
+        False ->
+            todo
+
+        True ->
+            { todo | tags = List.take index todo.tags ++ List.drop (index + 1) todo.tags }
+
+
+removeWhitespace : String -> String
+removeWhitespace str =
+    case Regex.fromString "\\s+" of
+        Nothing ->
+            str
+
+        Just regex ->
+            Regex.replace regex (\_ -> "-") str
+
+
 
 -- VIEW
 
@@ -224,7 +251,7 @@ viewTodoList todoList =
 viewTodo : Todo -> Html Msg
 viewTodo todo =
     li []
-        [ viewTodoTags todo.tags
+        [ viewTodoTags todo.id todo.tags
         , p [ style "margin-top" "0px" ]
             [ button [ onClick (Remove todo.id) ] [ text "X" ]
             , viewTodoContent todo
@@ -256,14 +283,25 @@ todoDecoration done =
             style "" ""
 
 
-viewTodoTags : List String -> Html Msg
-viewTodoTags tags =
+viewTodoTags : Int -> List String -> Html Msg
+viewTodoTags id tags =
     p
         [ style "display" "inline"
         , style "color" "#aaaaaa"
         , style "font-size" ".8rem"
         ]
-        (List.map (\t -> text (" " ++ t)) tags)
+        (List.indexedMap (viewTodoTag id) tags)
+
+
+viewTodoTag : Int -> Int -> String -> Html Msg
+viewTodoTag id index tag =
+    p
+        [ style "display" "inline"
+        , style "margin-right" "3px"
+        , style "margin-left" "3px"
+        , onClick (RemoveTag id index)
+        ]
+        [ text tag ]
 
 
 viewExpanded : Todo -> Html Msg
@@ -315,7 +353,7 @@ updateWithStorage msg oldModel =
 encode : Model -> E.Value
 encode model =
     E.object
-        [ ( "todo", E.string model.input )
+        [ ( "todo", E.string "" )
         , ( "todoList", E.list encodeTodo model.todoList )
         ]
 
