@@ -143,7 +143,7 @@ addTag : Int -> String -> Todo -> Todo
 addTag id tag todo =
     case todo.id == id of
         True ->
-            { todo | tags = todo.tags ++ [ tag |> String.trim |> removeWhitespace ] }
+            { todo | tags = todo.tags ++ [ tag |> String.trim |> removeWhitespace |> String.toLower ] }
 
         False ->
             todo
